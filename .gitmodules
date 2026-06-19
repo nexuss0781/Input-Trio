@@ -1,0 +1,5 @@
+[submodule "Component-1.2_Token-Embedding"]
+	path = Component-1.2_Token-Embedding
+	url = https://github.com/nexuss0781/Nexuss_Embedding.git
+[submodule "Component-1.3_Positional-Encoding"]
+	path = Component-1.3_Positional-Encoding
