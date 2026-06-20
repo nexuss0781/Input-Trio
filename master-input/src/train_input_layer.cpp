@@ -36,7 +36,7 @@ struct CmdConfig {
     int    save_every   = 100;
     bool   resume       = false;
     std::string ckpt_dir = "checkpoints";
-    std::string data_dir = "";
+    std::string data_dir = "Data";
 };
 
 static CmdConfig parse_args(int argc, char** argv) {
@@ -138,6 +138,23 @@ int main(int argc, char** argv) {
     bool use_real_data = !cmd.data_dir.empty();
     if (use_real_data) {
         std::string train_path = cmd.data_dir + "/train.txt";
+
+        // Auto-download if missing
+        {
+            std::ifstream probe(train_path);
+            if (!probe) {
+                std::printf("[data] %s not found — running dataset.py to download WikiText ...\n",
+                            train_path.c_str());
+                std::string dld = "python3 ../dataset.py --data_dir " + cmd.data_dir;
+                int rc = std::system(dld.c_str());
+                if (rc != 0) {
+                    std::fprintf(stderr, "FATAL: dataset.py failed (rc=%d). "
+                                "Install datasets: pip install datasets huggingface_hub\n", rc);
+                    return 1;
+                }
+            }
+        }
+
         std::printf("[data] Loading %s ...\n", train_path.c_str());
         if (!dataset.load(train_path)) {
             std::fprintf(stderr, "FATAL: could not load %s\n", train_path.c_str());
