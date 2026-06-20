@@ -94,7 +94,9 @@ public:
 
         // 2a. Init token embedder
         //     Falls back to stub mode if pybind11 unavailable (tokenizer_path = "")
-        embedder_ = HFAQEOutput::from_config(cfg.V, cfg.d, cfg.r, cfg.K,
+        //     Clamp K to V-1 so cold tier has at least 1 slot (required by HFAQE).
+        int K_eff = std::min(cfg.K, std::max(1, cfg.V - 1));
+        embedder_ = HFAQEOutput::from_config(cfg.V, cfg.d, cfg.r, K_eff,
                                               /*B=*/64, /*seed=*/42, cfg.tokenizer_path);
 
         // 2b. Init HDPE tables
