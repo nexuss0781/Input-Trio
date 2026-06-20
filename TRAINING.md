@@ -7,15 +7,16 @@
 git clone --recurse-submodules https://github.com/nexuss0781/Input-Trio.git
 cd Input-Trio
 
-# OR if already cloned without submodules:
+# OR update existing clone without losing changes:
+git pull
 git submodule update --init --recursive
 
 # 2. Install Python dataset dependency
 pip install datasets huggingface_hub
 
-# 3. Build
+# 3. Build all targets
 cd master-input
-mkdir -p build && cd build && cmake .. && make train_input_layer -j$(nproc)
+mkdir -p build && cd build && cmake .. && make -j$(nproc)
 ```
 
 > CMake auto-runs `git submodule update --init --recursive` at configure time,
@@ -64,6 +65,21 @@ Loss drops but validation plateaus — model is too small for byte-level pattern
 ```
 
 Expected: val ppl < 50 within 1000 steps.
+
+## Run inference on a sentence
+
+After training, run the trained model on any text:
+
+```bash
+./build/validation --sentence "The future of AI begins here."
+```
+
+Shows each stage:
+1. **Byte token IDs** — ASCII byte values
+2. **Raw embeddings** — HFAQE output vectors (first dims)
+3. **Position-encoded** — after HDPE RoPE rotation
+4. **Next-token predictions** — per-position top-5 probabilities
+5. **Final prediction** — top-10 next byte after the full sentence
 
 ## Training expected behaviour
 

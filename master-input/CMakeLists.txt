@@ -137,7 +137,19 @@ target_include_directories(train_input_layer PRIVATE
 )
 
 # ---------------------------------------------------------------------------
-# Target 4: test_train_numerical
+# Target 4: validation
+# Load trained model and run inference on a sentence.
+# ---------------------------------------------------------------------------
+add_executable(validation ${SRC_DIR}/validation.cpp)
+master_configure_target(validation)
+target_include_directories(validation PRIVATE
+    ${SRC_DIR}
+    ${HFAQE_SRC_DIR}
+    ${HDPE_SRC_DIR}
+)
+
+# ---------------------------------------------------------------------------
+# Target 5: test_train_numerical
 # Numerical correctness validation (gradient, convergence, checkpoint).
 # ---------------------------------------------------------------------------
 add_executable(test_train_numerical ${TEST_DIR}/test_train_numerical.cpp)
