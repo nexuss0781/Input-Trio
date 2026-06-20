@@ -2,7 +2,7 @@
 // Master Input — Nexus Unified Input Layer Demo
 //   End-to-end: init → tokenize → embed → position-encode → train loop
 // =============================================================================
-#include "src/training.cpp"
+#include "training.cpp"
 
 #include <cstdio>
 #include <cmath>
@@ -17,9 +17,11 @@ int main() {
     std::printf("%s\n", SEP);
 
     // ---- Config ----
+    // NOTE: HFAQE cold-tier SVD scales O(V·d·r) — expect 15-20s init at d=256.
+    //       d=512 would be ~4x slower (d·V·r cold SVD).
     InputEngineConfig cfg;
     cfg.V  = 16000;
-    cfg.d  = 512;
+    cfg.d  = 256;
     cfg.r  = 64;
     cfg.K  = 1024;
     cfg.B  = 64;
