@@ -2,7 +2,7 @@
 // Master Input — Integration Validation Suite
 //   Validates the full input pipeline: init, forward, norm, gradient flow.
 // =============================================================================
-#include "../src/input_engine.cpp"
+#include "../src/training.cpp"
 
 #include <cstdio>
 #include <cmath>

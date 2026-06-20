@@ -1,0 +1,187 @@
+// =============================================================================
+// train_input_layer — Standalone Training Entry Point
+//   Single command: trains the full input layer end-to-end on synthetic data.
+//   Usage: ./build/train_input_layer [--steps N] [--V N] [--d N] ...
+// =============================================================================
+#include "training.cpp"
+
+#include <cstdio>
+#include <cstring>
+#include <cmath>
+#include <vector>
+#include <string>
+#include <chrono>
+
+using Clock = std::chrono::high_resolution_clock;
+
+static const char* SEP =
+    "================================================================\n";
+
+// ---- Config from args ----
+struct CmdConfig {
+    int    V            = 4096;    // vocab (small for fast test)
+    int    d            = 64;      // model dimension
+    int    r            = 16;      // cold rank
+    int    K            = 256;     // hot tokens
+    int    B            = 64;      // block size
+    int    L            = 4;       // HDPE levels
+    int    h            = 4;       // heads
+    fp32   base         = 10000.0f;
+    int    steps        = 200;
+    int    batch_size   = 4;
+    int    seq_len      = 32;
+    fp32   lr           = 1e-3f;
+    int    log_every    = 10;
+    int    val_every    = 50;
+    int    save_every   = 100;
+    bool   resume       = false;
+    std::string ckpt_dir = "checkpoints";
+};
+
+static CmdConfig parse_args(int argc, char** argv) {
+    CmdConfig cfg;
+    for (int i = 1; i < argc; ++i) {
+        if      (!std::strcmp(argv[i], "--steps"))    cfg.steps    = std::atoi(argv[++i]);
+        else if (!std::strcmp(argv[i], "--V"))        cfg.V        = std::atoi(argv[++i]);
+        else if (!std::strcmp(argv[i], "--d"))        cfg.d        = std::atoi(argv[++i]);
+        else if (!std::strcmp(argv[i], "--r"))        cfg.r        = std::atoi(argv[++i]);
+        else if (!std::strcmp(argv[i], "--K"))        cfg.K        = std::atoi(argv[++i]);
+        else if (!std::strcmp(argv[i], "--batch"))    cfg.batch_size = std::atoi(argv[++i]);
+        else if (!std::strcmp(argv[i], "--seq"))      cfg.seq_len  = std::atoi(argv[++i]);
+        else if (!std::strcmp(argv[i], "--lr"))       cfg.lr       = std::atof(argv[++i]);
+        else if (!std::strcmp(argv[i], "--ckpt"))     cfg.ckpt_dir = argv[++i];
+        else if (!std::strcmp(argv[i], "--resume"))   cfg.resume   = true;
+    }
+    return cfg;
+}
+
+// ---- Generate synthetic batch ----
+static std::vector<int> make_synthetic_batch(int V, int batch_size, int seq_len,
+                                              std::mt19937_64& rng) {
+    std::uniform_int_distribution<int> dist(0, V - 1);
+    int n = batch_size * seq_len;
+    std::vector<int> ids(n);
+    for (int i = 0; i < n - 1; ++i)
+        ids[i] = dist(rng);
+    // Make last token distinct for proper next-token boundary
+    ids[n - 1] = dist(rng);
+    return ids;
+}
+
+// ---- Main ----
+int main(int argc, char** argv) {
+    CmdConfig cmd = parse_args(argc, argv);
+
+    std::printf("%s", SEP);
+    std::printf("  Train Input Layer — End-to-End Training\n");
+    std::printf("  Embedding (HFAQE) + Position Encoding (HDPE)\n");
+    std::printf("%s\n", SEP);
+
+    std::printf("  Config: V=%d  d=%d  r=%d  K=%d  B=%d  L=%d  h=%d\n",
+                cmd.V, cmd.d, cmd.r, cmd.K, cmd.B, cmd.L, cmd.h);
+    std::printf("  Steps=%d  batch=%d  seq=%d  lr=%.1e  ckpt=%s\n",
+                cmd.steps, cmd.batch_size, cmd.seq_len,
+                cmd.lr, cmd.ckpt_dir.c_str());
+    std::printf("\n");
+
+    // ---- Engine config ----
+    InputEngineConfig engine_cfg;
+    engine_cfg.V    = cmd.V;
+    engine_cfg.d    = cmd.d;
+    engine_cfg.r    = cmd.r;
+    engine_cfg.K    = cmd.K;
+    engine_cfg.B    = cmd.B;
+    engine_cfg.L    = cmd.L;
+    engine_cfg.h    = cmd.h;
+    engine_cfg.base = cmd.base;
+
+    // ---- Training config ----
+    InputTrainingConfig train_cfg;
+    train_cfg.total_steps = cmd.steps;
+    train_cfg.batch_size  = cmd.batch_size;
+    train_cfg.seq_len     = cmd.seq_len;
+    train_cfg.lr          = cmd.lr;
+    train_cfg.log_every   = cmd.log_every;
+    train_cfg.val_every   = cmd.val_every;
+    train_cfg.save_every  = cmd.save_every;
+    train_cfg.ckpt_dir    = cmd.ckpt_dir;
+    train_cfg.ckpt_name   = "input_trio";
+
+    // ---- Init pipeline ----
+    std::printf("[init] Building HFAQE + HDPE...\n");
+    auto t0 = Clock::now();
+
+    InputTrainingPipeline trainer;
+    if (!trainer.init(engine_cfg, train_cfg)) {
+        std::fprintf(stderr, "FATAL: pipeline init failed\n");
+        return 1;
+    }
+
+    auto t1 = Clock::now();
+    double init_s = std::chrono::duration<double>(t1 - t0).count();
+    std::printf("[init] Done (%.1f s)\n", init_s);
+
+    // ---- Resume from checkpoint ----
+    if (cmd.resume) {
+        if (trainer.load_checkpoint())
+            std::printf("[resume] Resumed at step %d\n", trainer.step());
+        else
+            std::printf("[resume] No checkpoint found, starting fresh\n");
+    }
+
+    // ---- Data RNG ----
+    std::mt19937_64 rng(static_cast<uint64_t>(trainer.step() + 42));
+
+    // ---- Training loop ----
+    std::printf("\n--- Training ---\n");
+    fp32 best_loss = 1e30f;
+    int train_start_step = trainer.step();
+
+    for (int s = train_start_step; s < cmd.steps; ++s) {
+        auto ids = make_synthetic_batch(cmd.V, cmd.batch_size, cmd.seq_len, rng);
+        auto m = trainer.train_step(ids);
+
+        if (m.loss < best_loss) best_loss = m.loss;
+
+        // Log
+        if ((s + 1) % cmd.log_every == 0) {
+            std::printf("  step=%4d/%d  loss=%.4f  grad=%.2e  lr=%.2e  %d tok  %.1f ms\n",
+                        s + 1, cmd.steps, m.loss, m.grad_norm, m.lr_current,
+                        m.n_tokens, m.ms);
+        }
+
+        // Validation (on synthetic held-out)
+        if ((s + 1) % cmd.val_every == 0) {
+            std::mt19937_64 val_rng(static_cast<uint64_t>(s + 9999));
+            auto val_ids = make_synthetic_batch(cmd.V, cmd.batch_size, cmd.seq_len, val_rng);
+            fp32 val_loss = trainer.validate(val_ids);
+            fp32 val_ppl  = std::exp(std::min(val_loss, 20.0f));
+            std::printf("  [val]  step=%4d  val_loss=%.4f  val_ppl=%.2f\n",
+                        s + 1, val_loss, val_ppl);
+        }
+
+        // Save checkpoint
+        if ((s + 1) % cmd.save_every == 0) {
+            char tag[32];
+            std::snprintf(tag, sizeof(tag), "step_%07d", s + 1);
+            trainer.save_checkpoint(tag);
+        }
+    }
+
+    // ---- Final save ----
+    trainer.save_checkpoint("final");
+
+    // ---- Report ----
+    auto t2 = Clock::now();
+    double total_s = std::chrono::duration<double>(t2 - t1).count();
+
+    std::printf("\n%s", SEP);
+    std::printf("  Training complete\n");
+    std::printf("  Steps: %d  |  Best loss: %.4f\n", cmd.steps, best_loss);
+    std::printf("  Wall time: %.1f s  |  %.2f ms/step\n",
+                total_s, total_s * 1000.0 / std::max(1, cmd.steps - train_start_step));
+    std::printf("  Checkpoints: %s/\n", cmd.ckpt_dir.c_str());
+    std::printf("%s", SEP);
+
+    return 0;
+}

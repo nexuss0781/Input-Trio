@@ -110,6 +110,30 @@ target_include_directories(master_test PRIVATE
 )
 
 # ---------------------------------------------------------------------------
+# Target 3: train_input_layer
+# Standalone trainer — runs the full input layer training loop.
+# ---------------------------------------------------------------------------
+add_executable(train_input_layer ${SRC_DIR}/train_input_layer.cpp)
+master_configure_target(train_input_layer)
+target_include_directories(train_input_layer PRIVATE
+    ${SRC_DIR}
+    ${HFAQE_SRC_DIR}
+    ${HDPE_SRC_DIR}
+)
+
+# ---------------------------------------------------------------------------
+# Target 4: test_train_numerical
+# Numerical correctness validation (gradient, convergence, checkpoint).
+# ---------------------------------------------------------------------------
+add_executable(test_train_numerical ${TEST_DIR}/test_train_numerical.cpp)
+master_configure_target(test_train_numerical)
+target_include_directories(test_train_numerical PRIVATE
+    ${SRC_DIR}
+    ${HFAQE_SRC_DIR}
+    ${HDPE_SRC_DIR}
+)
+
+# ---------------------------------------------------------------------------
 # CTest integration
 # ---------------------------------------------------------------------------
 enable_testing()
@@ -124,11 +148,24 @@ set_tests_properties(MasterInput_Integration_Suite PROPERTIES
     FAIL_REGULAR_EXPRESSION "[1-9][0-9]* FAILED"
 )
 
+add_test(
+    NAME  TrainNumerical_Suite
+    COMMAND test_train_numerical
+)
+set_tests_properties(TrainNumerical_Suite PROPERTIES
+    TIMEOUT 600
+    PASS_REGULAR_EXPRESSION "0 FAILED"
+    FAIL_REGULAR_EXPRESSION "[1-9][0-9]* FAILED"
+)
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 message(STATUS "----------------------------------------------------")
 message(STATUS "Targets    : master_main  master_test")
+message(STATUS "             train_input_layer  test_train_numerical")
 message(STATUS "Run demo   : ./build/master_main")
 message(STATUS "Run tests  : ./build/master_test")
+message(STATUS "Train      : ./build/train_input_layer")
+message(STATUS "Num checks: ./build/test_train_numerical")
 message(STATUS "----------------------------------------------------")

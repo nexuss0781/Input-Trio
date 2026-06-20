@@ -16,6 +16,8 @@
 #include <random>
 #include <chrono>
 
+using Clock = std::chrono::high_resolution_clock;
+
 // ---------------------------------------------------------------------------
 // 1. Embedding — HFAQE (hierarchical frequency-adaptive quantized embedding)
 //    Transitively includes tokenizer bridge (Input.cpp → Core.cpp).
@@ -28,6 +30,24 @@
 // ---------------------------------------------------------------------------
 #define NEXUS_TYPES
 #include "../../Component-1.3_Positional-Encoding/src/core.cpp"
+
+// Inverse RoPE rotation for backward pass: R^T · grad
+// Forward:  q_rot[2i]   = q[2i]*c - q[2i+1]*s
+//           q_rot[2i+1] = q[2i]*s + q[2i+1]*c
+// Inverse:  grad[2i]   = grad[2i]*c + grad[2i+1]*s
+//           grad[2i+1] = grad[2i+1]*c - grad[2i]*s
+inline void apply_inverse_rope_inplace(fp32* grad, int d_k,
+                                        const fp32* cos_arr, const fp32* sin_arr) {
+    int pairs = d_k / 2;
+    for (int i = 0; i < pairs; ++i) {
+        fp32 g0 = grad[2 * i];
+        fp32 g1 = grad[2 * i + 1];
+        fp32 c  = cos_arr[i];
+        fp32 s  = sin_arr[i];
+        grad[2 * i]     = g0 * c + g1 * s;
+        grad[2 * i + 1] = g1 * c - g0 * s;
+    }
+}
 
 // =============================================================================
 // §1 — Configuration
@@ -123,6 +143,54 @@ public:
         embedder_->embed_tokens(token_ids, n, out);
     }
 
+    // ---- Position encoding: forward rotation ----
+    // Apply RoPE to each head's d_k dimensions using precomputed cos/sin for
+    // natural positions 0..n-1.
+    void apply_rotation(fp32* data, int n) {
+        int pairs_ = cfg_.pairs();
+        int d_k_   = cfg_.d_k();
+        int h_     = cfg_.h;
+        int d      = cfg_.d;
+        std::vector<fp32> cos_buf(pairs_), sin_buf(pairs_);
+        for (int i = 0; i < n; ++i) {
+            hdpe_.encode_position(i, cos_buf.data(), sin_buf.data());
+            fp32* row = data + i * d;
+            for (int head = 0; head < h_; ++head)
+                apply_rope_inplace(row + head * d_k_, d_k_, cos_buf.data(), sin_buf.data());
+        }
+    }
+
+    // ---- Position encoding: inverse rotation (for backward pass) ----
+    // Applies R^T to each head's d_k dimensions, where R is the RoPE rotation.
+    void apply_inverse_rotation(fp32* grad, int n) {
+        int pairs_ = cfg_.pairs();
+        int d_k_   = cfg_.d_k();
+        int h_     = cfg_.h;
+        int d      = cfg_.d;
+        std::vector<fp32> cos_buf(pairs_), sin_buf(pairs_);
+        for (int i = 0; i < n; ++i) {
+            hdpe_.encode_position(i, cos_buf.data(), sin_buf.data());
+            fp32* row = grad + i * d;
+            for (int head = 0; head < h_; ++head)
+                apply_inverse_rope_inplace(row + head * d_k_, d_k_, cos_buf.data(), sin_buf.data());
+        }
+    }
+
+    // ---- Position encoding: inverse rotation at explicit positions ----
+    void apply_inverse_rotation_at(fp32* grad, const int* positions, int n) {
+        int pairs_ = cfg_.pairs();
+        int d_k_   = cfg_.d_k();
+        int h_     = cfg_.h;
+        int d      = cfg_.d;
+        std::vector<fp32> cos_buf(pairs_), sin_buf(pairs_);
+        for (int i = 0; i < n; ++i) {
+            hdpe_.encode_position(positions[i], cos_buf.data(), sin_buf.data());
+            fp32* row = grad + i * d;
+            for (int head = 0; head < h_; ++head)
+                apply_inverse_rope_inplace(row + head * d_k_, d_k_, cos_buf.data(), sin_buf.data());
+        }
+    }
+
     void encode_positions(int n, fp32* out) {
         int pairs_ = cfg_.pairs();
         std::vector<fp32> cos_buf(pairs_), sin_buf(pairs_);
@@ -139,6 +207,8 @@ public:
     const InputEngineConfig& config() const { return cfg_; }
     const HDPE& hdpe() const { return hdpe_; }
     HFAQEOutput* embedder() { return embedder_.get(); }
+    HFAQE* raw_model() { return embedder_ ? embedder_->raw_model() : nullptr; }
+    const HFAQE* raw_model() const { return embedder_ ? embedder_->raw_model() : nullptr; }
 
 private:
     void apply_position_encoding(fp32* data, int n, fp32* out) {
