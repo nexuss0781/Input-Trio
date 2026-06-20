@@ -36,6 +36,7 @@ struct CmdConfig {
     int    save_every   = 100;
     bool   resume       = false;
     std::string ckpt_dir = "checkpoints";
+    std::string data_dir = "";
 };
 
 static CmdConfig parse_args(int argc, char** argv) {
@@ -49,6 +50,7 @@ static CmdConfig parse_args(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--batch"))    cfg.batch_size = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--seq"))      cfg.seq_len  = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--lr"))       cfg.lr       = std::atof(argv[++i]);
+        else if (!std::strcmp(argv[i], "--data_dir")) cfg.data_dir = argv[++i];
         else if (!std::strcmp(argv[i], "--ckpt"))     cfg.ckpt_dir = argv[++i];
         else if (!std::strcmp(argv[i], "--resume"))   cfg.resume   = true;
     }
@@ -79,9 +81,10 @@ int main(int argc, char** argv) {
 
     std::printf("  Config: V=%d  d=%d  r=%d  K=%d  B=%d  L=%d  h=%d\n",
                 cmd.V, cmd.d, cmd.r, cmd.K, cmd.B, cmd.L, cmd.h);
-    std::printf("  Steps=%d  batch=%d  seq=%d  lr=%.1e  ckpt=%s\n",
+    std::printf("  Steps=%d  batch=%d  seq=%d  lr=%.1e  ckpt=%s  data=%s\n",
                 cmd.steps, cmd.batch_size, cmd.seq_len,
-                cmd.lr, cmd.ckpt_dir.c_str());
+                cmd.lr, cmd.ckpt_dir.c_str(),
+                cmd.data_dir.empty() ? "synthetic" : cmd.data_dir.c_str());
     std::printf("\n");
 
     // ---- Engine config ----
@@ -106,6 +109,7 @@ int main(int argc, char** argv) {
     train_cfg.save_every  = cmd.save_every;
     train_cfg.ckpt_dir    = cmd.ckpt_dir;
     train_cfg.ckpt_name   = "input_trio";
+    train_cfg.data_dir    = cmd.data_dir;
 
     // ---- Init pipeline ----
     std::printf("[init] Building HFAQE + HDPE...\n");
@@ -129,8 +133,21 @@ int main(int argc, char** argv) {
             std::printf("[resume] No checkpoint found, starting fresh\n");
     }
 
-    // ---- Data RNG ----
-    std::mt19937_64 rng(static_cast<uint64_t>(trainer.step() + 42));
+    // ---- Load dataset (real or synthetic) ----
+    TextDataset dataset;
+    bool use_real_data = !cmd.data_dir.empty();
+    if (use_real_data) {
+        std::string train_path = cmd.data_dir + "/train.txt";
+        std::printf("[data] Loading %s ...\n", train_path.c_str());
+        if (!dataset.load(train_path)) {
+            std::fprintf(stderr, "FATAL: could not load %s\n", train_path.c_str());
+            return 1;
+        }
+        std::printf("[data] Loaded %d lines, %d byte tokens (vocab=256)\n",
+                    (int)dataset.lines.size(), dataset.size());
+    } else {
+        std::printf("[data] Using synthetic data (V=%d)\n", cmd.V);
+    }
 
     // ---- Training loop ----
     std::printf("\n--- Training ---\n");
@@ -138,7 +155,16 @@ int main(int argc, char** argv) {
     int train_start_step = trainer.step();
 
     for (int s = train_start_step; s < cmd.steps; ++s) {
-        auto ids = make_synthetic_batch(cmd.V, cmd.batch_size, cmd.seq_len, rng);
+        int seed = s + 42;
+
+        std::vector<int> ids;
+        if (use_real_data) {
+            ids = dataset.get_batch(cmd.batch_size, cmd.seq_len, 0, seed);
+        } else {
+            std::mt19937_64 rng(static_cast<uint64_t>(seed));
+            ids = make_synthetic_batch(cmd.V, cmd.batch_size, cmd.seq_len, rng);
+        }
+
         auto m = trainer.train_step(ids);
 
         if (m.loss < best_loss) best_loss = m.loss;
@@ -150,11 +176,17 @@ int main(int argc, char** argv) {
                         m.n_tokens, m.ms);
         }
 
-        // Validation (on synthetic held-out)
+        // Validation (on real or synthetic held-out)
         if ((s + 1) % cmd.val_every == 0) {
-            std::mt19937_64 val_rng(static_cast<uint64_t>(s + 9999));
-            auto val_ids = make_synthetic_batch(cmd.V, cmd.batch_size, cmd.seq_len, val_rng);
-            fp32 val_loss = trainer.validate(val_ids);
+            fp32 val_loss;
+            if (use_real_data) {
+                auto val_ids = dataset.get_val_batch(cmd.batch_size, cmd.seq_len);
+                val_loss = trainer.validate(val_ids);
+            } else {
+                std::mt19937_64 val_rng(static_cast<uint64_t>(s + 9999));
+                auto val_ids = make_synthetic_batch(cmd.V, cmd.batch_size, cmd.seq_len, val_rng);
+                val_loss = trainer.validate(val_ids);
+            }
             fp32 val_ppl  = std::exp(std::min(val_loss, 20.0f));
             std::printf("  [val]  step=%4d  val_loss=%.4f  val_ppl=%.2f\n",
                         s + 1, val_loss, val_ppl);

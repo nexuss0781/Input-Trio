@@ -9,6 +9,8 @@
 #include "input_engine.cpp"
 #include "../../Component-1.2_Token-Embedding/src/Storage.cpp"
 
+#include <fstream>
+
 // =============================================================================
 // §1 — Training Configuration
 // =============================================================================
@@ -37,6 +39,9 @@ struct InputTrainingConfig {
     int  log_every   = 10;
     int  val_every   = 100;
     int  save_every  = 500;
+
+    // Data
+    std::string data_dir  = "";        // empty = synthetic data
 
     // Checkpoint
     std::string ckpt_dir  = "checkpoints";
@@ -170,6 +175,90 @@ static LossResult compute_loss(const HFAQE& model,
     out.n_toks = n_steps;
     return out;
 }
+
+// =============================================================================
+// §4b — Text Data Utilities (WikiText byte-level tokenisation)
+// =============================================================================
+
+static std::vector<int> byte_tokenise(const std::string& text, int max_len = -1) {
+    std::vector<int> ids;
+    ids.reserve(text.size());
+    for (unsigned char c : text) {
+        ids.push_back(static_cast<int>(c));
+        if (max_len > 0 && (int)ids.size() >= max_len) break;
+    }
+    return ids;
+}
+
+static std::vector<std::string> load_text_file(const std::string& path) {
+    std::ifstream f(path);
+    if (!f) throw std::runtime_error("Cannot open: " + path);
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(f, line))
+        if (!line.empty()) lines.push_back(line);
+    return lines;
+}
+
+struct TextDataset {
+    std::vector<std::string> lines;
+    std::vector<int> token_ids;       // flat byte tokens (all lines concatenated)
+    int vocab_size = 256;             // byte-level
+
+    bool load(const std::string& path) {
+        lines = load_text_file(path);
+        if (lines.empty()) return false;
+        // Concatenate all lines into one flat token stream (byte tokenisation)
+        std::vector<int> ids;
+        for (const auto& line : lines) {
+            auto tok = byte_tokenise(line);
+            ids.insert(ids.end(), tok.begin(), tok.end());
+        }
+        token_ids = std::move(ids);
+        return true;
+    }
+
+    int size() const { return (int)token_ids.size(); }
+
+    // Get a batch of token_ids: [batch_size, seq_len] flat array
+    // Samples are contiguous chunks from the corpus (stride=1 for overlap)
+    std::vector<int> get_batch(int batch_size, int seq_len, int offset, int rng_seed) const {
+        std::vector<int> out;
+        out.reserve(batch_size * seq_len);
+        int total = size();
+        std::mt19937_64 rng(static_cast<uint64_t>(rng_seed));
+        for (int b = 0; b < batch_size; ++b) {
+            // pick a random start position that leaves room for seq_len+1 tokens
+            int max_start = total - seq_len - 1;
+            if (max_start < 1) {
+                // fallback: too short, pad with zeros
+                for (int t = 0; t < seq_len; ++t) out.push_back(0);
+                continue;
+            }
+            std::uniform_int_distribution<int> dist(0, max_start);
+            int start = dist(rng);
+            for (int t = 0; t < seq_len; ++t)
+                out.push_back(token_ids[start + t]);
+        }
+        return out;
+    }
+
+    // Get a single contiguous chunk for validation (deterministic)
+    std::vector<int> get_val_batch(int batch_size, int seq_len) const {
+        std::vector<int> out;
+        out.reserve(batch_size * seq_len);
+        int total = size();
+        // Use a fixed window from the beginning
+        int pos = 0;
+        for (int b = 0; b < batch_size; ++b) {
+            for (int t = 0; t < seq_len; ++t) {
+                out.push_back(token_ids[pos % total]);
+                ++pos;
+            }
+        }
+        return out;
+    }
+};
 
 // =============================================================================
 // §5 — Input Training Pipeline
