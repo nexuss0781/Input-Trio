@@ -525,4 +525,90 @@ private:
     fp32  best_val_loss_ = 1e30f;
 };
 
+// =============================================================================
+// §6 — Evaluation Utilities
+// =============================================================================
+
+struct PerplexityResult {
+    fp32 loss   = 0.0f;
+    fp32 ppl    = 0.0f;
+    int   n_tok = 0;
+};
+
+// Full-dataset perplexity evaluator — iterates over all tokens in chunks
+static PerplexityResult eval_perplexity(
+    InputTrainingPipeline& trainer,
+    const std::vector<int>& all_tokens,
+    int batch_size, int seq_len)
+{
+    int total = static_cast<int>(all_tokens.size());
+    int chunk = batch_size * seq_len;
+    if (total < seq_len + 1) return {99.0f, std::exp(99.0f), 0};
+
+    double sum_loss = 0.0;
+    int n_chunks = 0;
+    int pos = 0;
+
+    while (pos + seq_len + 1 < total) {
+        std::vector<int> batch;
+        batch.reserve(chunk);
+        int b;
+        for (b = 0; b < batch_size; ++b) {
+            int start = pos + b * seq_len;
+            if (start + seq_len + 1 >= total) break;
+            for (int t = 0; t < seq_len; ++t)
+                batch.push_back(all_tokens[start + t]);
+        }
+        if (b == 0) break;
+
+        int n_actual = static_cast<int>(batch.size());
+        // Pad partial batch by repeating
+        while ((int)batch.size() < chunk)
+            batch.push_back(batch[(int)batch.size() % seq_len]);
+
+        fp32 loss = trainer.validate(batch);
+        sum_loss += loss;
+        n_chunks++;
+
+        pos += seq_len;
+        if (pos >= total) break;
+    }
+
+    if (n_chunks == 0) return {99.0f, std::exp(99.0f), 0};
+    fp32 avg_loss = static_cast<fp32>(sum_loss / n_chunks);
+    fp32 ppl = std::exp(std::min(avg_loss, 20.0f));
+    return {avg_loss, ppl, n_chunks * chunk};
+}
+
+// Pipeline sanity: tokenize → embed → position-encode → validate
+static bool check_pipeline_sanity(
+    InputTrainingPipeline& trainer,
+    const std::string& test_str,
+    std::string* out_msg = nullptr)
+{
+    auto ids = byte_tokenise(test_str);
+    if (ids.empty()) {
+        if (out_msg) *out_msg = "byte_tokenise returned empty";
+        return false;
+    }
+
+    fp32 val = trainer.validate(ids);
+    if (!std::isfinite(val)) {
+        if (out_msg) *out_msg = "Non-finite loss from pipeline";
+        return false;
+    }
+    if (val < 0 || val > 50) {
+        if (out_msg) *out_msg = "Loss out of reasonable range [0, 50]";
+        return false;
+    }
+
+    if (out_msg) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "loss=%.4f on \"%s\"",
+                      val, test_str.c_str());
+        *out_msg = buf;
+    }
+    return true;
+}
+
 #endif // INPUT_TRAINING_CPP
