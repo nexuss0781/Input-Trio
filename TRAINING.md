@@ -7,28 +7,37 @@
 git clone --recurse-submodules https://github.com/nexuss0781/Input-Trio.git
 cd Input-Trio
 
-# OR update existing clone without losing changes:
+# OR update existing clone:
 git pull
 git submodule update --init --recursive
 
 # 2. Install Python dataset dependency
 pip install datasets huggingface_hub
 
-# 3. Build all targets
+# 3. Build all targets (CMake auto-inits submodules at configure time)
 cd master-input
 mkdir -p build && cd build && cmake .. && make -j$(nproc)
 ```
 
-> CMake auto-runs `git submodule update --init --recursive` at configure time,
-> so a plain `cmake ..` also fetches submodules automatically.
-
-## Quick start (auto-download WikiText-2)
+## Train on WikiText-2 (auto-download)
 
 ```bash
-./train_input_layer --steps 1000
+./train_input_layer --steps 2000 --d 256 --batch 16 --seq 128 --V 256 --lr 3e-4
 ```
 
 On first run this downloads `Salesforce/wikitext-2-raw-v1` into `Data/` and trains.
+After training, it automatically evaluates on validation and test splits.
+
+### Expected results
+
+| Metric | Random | Trained | Gain |
+|--------|--------|---------|------|
+| Train loss | 5.55 (ln 256) | ~4.64 | -0.91 |
+| Val loss | 5.55 | ~4.69 | -0.86 |
+| Val perplexity | 256 | ~108 | 2.4× better |
+| Test perplexity | 256 | ~108 | 2.4× better |
+
+Training takes ~2.5 min (2000 steps, ~78 ms/step on GPU).
 
 ## Options
 
@@ -44,47 +53,19 @@ On first run this downloads `Salesforce/wikitext-2-raw-v1` into `Data/` and trai
 | `--ckpt` | `checkpoints` | Checkpoint directory |
 | `--resume` | — | Resume from latest checkpoint |
 
-## Manual data download
+## Inference on sentences
 
 ```bash
-python3 dataset.py --data_dir /path/to/Data
-./build/train_input_layer --data_dir /path/to/Data
+# Single sentence
+./validation --sentence "The future of AI begins here."
+
+# Batch from file
+./validation --file ../src/sentences.txt
 ```
 
-## Training results (first run)
-
-Default config (`d=64`, `V=4096`, `batch=4`, `seq=32`):
-```
-train loss 8.3 → 4.5   |   val loss stuck at ~6.0  |   val ppl ~420
-```
-Loss drops but validation plateaus — model is too small for byte-level patterns.
-
-**Recommended** for WikiText-2 byte-level:
-```bash
-./train_input_layer --steps 2000 --d 256 --batch 16 --seq 128 --V 256 --lr 3e-4
-```
-
-Expected: val ppl < 50 within 1000 steps.
-
-## Run inference on a sentence
-
-After training, run the trained model on any text:
-
-```bash
-./build/validation --sentence "The future of AI begins here."
-```
-
-Shows each stage:
+Output shows all stages:
 1. **Byte token IDs** — ASCII byte values
-2. **Raw embeddings** — HFAQE output vectors (first dims)
+2. **Raw embeddings** — HFAQE output vectors
 3. **Position-encoded** — after HDPE RoPE rotation
 4. **Next-token predictions** — per-position top-5 probabilities
-5. **Final prediction** — top-10 next byte after the full sentence
-
-## Training expected behaviour
-
-```
-loss=5.5 → loss=3.5 → loss=2.5 → ... → loss ~1.0-1.5
-```
-
-Perplexity should drop from ~200+ to ~10-20 within 1000 steps on WikiText-2 byte-level.
+5. **Final next-token** — top-8 distribution with entropy
