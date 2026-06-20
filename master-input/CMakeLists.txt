@@ -21,6 +21,21 @@ cmake_minimum_required(VERSION 3.16)
 project(MasterInput VERSION 1.0.0 LANGUAGES CXX)
 
 # ---------------------------------------------------------------------------
+# Auto-init git submodules
+# ---------------------------------------------------------------------------
+find_package(Git QUIET)
+if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../.gitmodules")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+        RESULT_VARIABLE GIT_SUBMOD_RESULT
+    )
+    if(NOT GIT_SUBMOD_RESULT EQUAL "0")
+        message(WARNING "git submodule update --init failed: ${GIT_SUBMOD_RESULT}")
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Language standard
 # ---------------------------------------------------------------------------
 set(CMAKE_CXX_STANDARD          17)

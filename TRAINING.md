@@ -1,9 +1,25 @@
 # Training — Input-Trio (HFAQE + HDPE)
 
+## Prerequisites
+
 ```bash
+# 1. Clone with submodules
+git clone --recurse-submodules https://github.com/nexuss0781/Input-Trio.git
+cd Input-Trio
+
+# OR if already cloned without submodules:
+git submodule update --init --recursive
+
+# 2. Install Python dataset dependency
+pip install datasets huggingface_hub
+
+# 3. Build
 cd master-input
 mkdir -p build && cd build && cmake .. && make train_input_layer -j$(nproc)
 ```
+
+> CMake auto-runs `git submodule update --init --recursive` at configure time,
+> so a plain `cmake ..` also fetches submodules automatically.
 
 ## Quick start (auto-download WikiText-2)
 
