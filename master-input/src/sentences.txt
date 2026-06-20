@@ -1,0 +1,8 @@
+Hello World
+The future of AI begins here.
+GPT-4o, Claude 4, Gemini 2.5 — 2025 was wild.
+for i in range(10): print(i**2)
+Byte tokenisation maps each ASCII character to its integer value 0-255.
+The quick brown fox jumps over the lazy dog.
+./data/train.txt --vocab 256 --batch 16 --seq 128
+HFAQE + HDPE + RoPE + LM head = next-token prediction.
