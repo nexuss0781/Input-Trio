@@ -37,7 +37,8 @@ On first run this downloads `Salesforce/wikitext-2-raw-v1` into `Data/` and trai
 | `--batch` | 4 | Batch size |
 | `--seq` | 32 | Sequence length |
 | `--lr` | 1e-3 | Learning rate |
-| `--V` | 4096 | Vocabulary size (synthetic only) |
+| `--V` | 4096 | Vocabulary size (set `--V 256` for byte-level WikiText) |
+| `--d` | 64 | Embedding dimension (256+ recommended) |
 | `--data_dir` | `Data` | Path to folder with train/validation/test.txt |
 | `--ckpt` | `checkpoints` | Checkpoint directory |
 | `--resume` | — | Resume from latest checkpoint |
@@ -48,6 +49,21 @@ On first run this downloads `Salesforce/wikitext-2-raw-v1` into `Data/` and trai
 python3 dataset.py --data_dir /path/to/Data
 ./build/train_input_layer --data_dir /path/to/Data
 ```
+
+## Training results (first run)
+
+Default config (`d=64`, `V=4096`, `batch=4`, `seq=32`):
+```
+train loss 8.3 → 4.5   |   val loss stuck at ~6.0  |   val ppl ~420
+```
+Loss drops but validation plateaus — model is too small for byte-level patterns.
+
+**Recommended** for WikiText-2 byte-level:
+```bash
+./train_input_layer --steps 2000 --d 256 --batch 16 --seq 128 --V 256 --lr 3e-4
+```
+
+Expected: val ppl < 50 within 1000 steps.
 
 ## Training expected behaviour
 
