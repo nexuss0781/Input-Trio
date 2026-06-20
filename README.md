@@ -80,6 +80,10 @@ cmake --build build -j$(nproc)
 ./build/master_test
 ./build/test_train_numerical
 
+# Train the input layer (synthetic data)
+./build/train_input_layer --steps 500 --V 4096 --d 64 --r 16 --K 256 \
+  --batch 4 --seq 32 --lr 1e-3
+
 # Run via CTest
 ctest --test-dir build -V
 ```
