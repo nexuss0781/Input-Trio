@@ -39,11 +39,11 @@ def main():
     args = parser.parse_args()
 
     try:
-        from huggingface_hub import HfApi, Repository
+        from huggingface_hub import HfApi
     except ImportError:
         print("[hub_push] installing huggingface_hub ...")
         os.system(f"{sys.executable} -m pip install huggingface_hub -q")
-        from huggingface_hub import HfApi, Repository
+        from huggingface_hub import HfApi
 
     token = args.token or os.environ.get("HF_TOKEN", "")
     if not token:
