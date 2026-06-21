@@ -75,6 +75,24 @@ Training takes ~2.5 min (2000 steps, ~78 ms/step on GPU).
 | `--data_dir` | `Data` | Path to folder with train/validation/test.txt |
 | `--ckpt` | `checkpoints` | Checkpoint directory |
 | `--resume` | — | Resume from latest checkpoint |
+| `--push_to_hub` | — | Repo ID to push (e.g. `nexuss0781/Input-Trio`) |
+
+## Push to Hugging Face Hub
+
+After training finishes, upload the checkpoint directory to Hugging Face Hub:
+
+```bash
+./train_input_layer --push_to_hub nexuss0781/Input-Trio --steps 2000 --d 256 --batch 16 --seq 128 --V 256 --lr 3e-4
+```
+
+On first push, a `HF_TOKEN` file is created automatically with a `TOKEN=""` placeholder. Paste your token in that file:
+
+```bash
+# Edit HF_TOKEN:
+TOKEN="hf_your_token_here"
+```
+
+Alternatively, set the `HF_TOKEN` environment variable. The token file is gitignored and never committed.
 
 ## Inference on sentences
 
