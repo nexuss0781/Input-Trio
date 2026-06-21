@@ -207,6 +207,7 @@ public:
 
     // ---- Accessors ----
     const InputEngineConfig& config() const { return cfg_; }
+    HDPE& hdpe() { return hdpe_; }
     const HDPE& hdpe() const { return hdpe_; }
     HFAQEOutput* embedder() { return embedder_.get(); }
     HFAQE* raw_model() { return embedder_ ? embedder_->raw_model() : nullptr; }

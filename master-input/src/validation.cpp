@@ -103,8 +103,8 @@ int main(int argc, char** argv) {
     int h_      = engine_cfg.h;
     int pairs   = engine_cfg.pairs();
     int V       = trainer.model()->cfg.V;
-    HFAQE* model     = trainer.model();
-    const HDPE& hdpe = trainer.engine().hdpe();
+    HFAQE* model = trainer.model();
+    HDPE& hdpe   = trainer.engine().hdpe();
     std::vector<fp32> logits(static_cast<size_t>(V));
 
     // ---- Process each sentence ----
