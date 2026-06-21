@@ -15,7 +15,7 @@ Update existing: `git pull && git submodule update --init --recursive`
 ```bash
 cd master-input && mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
-make train_input_layer -j$(nproc)  # single target
+make train_input_layer -j$(nproc)
 ```
 
 ## Train
@@ -24,16 +24,15 @@ make train_input_layer -j$(nproc)  # single target
 ./train_input_layer --steps 2000 --d 256 --batch 16 --seq 128 --V 256 --lr 3e-4
 ```
 
-First run auto-downloads `Salesforce/wikitext-2-raw-v1` → `Data/{train,validation,test}.txt`.  
-After training: auto-evaluates val + test perplexity (~2.5 min on GPU).
+Auto-downloads WikiText-2 on first run. After training: val + test perplexity eval.
 
-| Metric | Random | Trained |
-|--------|--------|---------|
-| Loss | 5.55 (ln 256) | ~4.64 |
+| Metric | Before | After |
+|--------|--------|-------|
+| Loss | 5.55 | ~4.64 |
 | Val ppl | 256 | ~108 |
 | Test ppl | 256 | ~108 |
 
-### Options
+### All flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -43,35 +42,30 @@ After training: auto-evaluates val + test perplexity (~2.5 min on GPU).
 | `--lr` | 1e-3 | Learning rate |
 | `--V` | 4096 | Vocab size |
 | `--d` | 64 | Embedding dim |
-| `--data_dir` | `Data` | Data folder |
-| `--ckpt` | `checkpoints` | Checkpoint dir |
-| `--resume` | — | Resume from latest |
-| `--push_to_hub` | — | HF repo ID |
-| `--token` | — | HF token string |
-| `--token_file` | `HF_TOKEN` | Token file path |
+| `--data_dir` | Data | Data folder |
+| `--ckpt` | checkpoints | Checkpoint dir |
+| `--resume` | — | Resume latest checkpoint |
+| `--push_to_hub` | — | HF repo ID to push to |
+| `--token` | — | HF token (inline) |
+| `--token_file` | HF_TOKEN | HF token file path |
 
-### Push to Hugging Face Hub
+## Push to Hub
 
-Add `--push_to_hub` to upload checkpoints after training:
-
-```bash
-HF_TOKEN="hf_xxxxxxxxxx" ./train_input_layer --push_to_hub nexuss0781/Input-Trio --steps 2000 --d 256
-```
-
-Or via file (auto-created with placeholder on first push):
+Three ways to provide token (priority: `--token` > `$HF_TOKEN` > file):
 
 ```bash
-echo 'TOKEN="hf_xxxxxxxxxx"' > HF_TOKEN
+# 1 — env var
+HF_TOKEN="hf_xxx" ./train_input_layer --push_to_hub nexuss0781/Input-Trio --steps 2000 --d 256
+
+# 2 — token file (auto-created with placeholder on first push)
+echo 'TOKEN="hf_xxx"' > HF_TOKEN
 ./train_input_layer --push_to_hub nexuss0781/Input-Trio --steps 2000 --d 256
+
+# 3 — inline flag
+./train_input_layer --push_to_hub nexuss0781/Input-Trio --token hf_xxx --steps 2000 --d 256
 ```
 
-Or via `--token` flag:
-
-```bash
-./train_input_layer --push_to_hub nexuss0781/Input-Trio --token hf_xxxxxxxxxx --steps 2000 --d 256
-```
-
-Priority: `--token` > `$HF_TOKEN` > `HF_TOKEN` file. The `HF_TOKEN` file is gitignored.
+`HF_TOKEN` file is gitignored.
 
 ## Inference
 
@@ -80,4 +74,4 @@ Priority: `--token` > `$HF_TOKEN` > `HF_TOKEN` file. The `HF_TOKEN` file is giti
 ./validation --file ../src/sentences.txt
 ```
 
-Output: byte tokens → HFAQE embeddings → HDPE position-encode → next-token probs → final distribution.
+Output pipeline: byte tokens → HFAQE embeddings → HDPE positional encoding → next-token predictions → final distribution.
