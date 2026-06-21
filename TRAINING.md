@@ -19,6 +19,29 @@ cd master-input
 mkdir -p build && cd build && cmake .. && make -j$(nproc)
 ```
 
+## Build
+
+```bash
+cd master-input
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
+
+Builds all targets: `train_input_layer`, `validation`, `master_main`, `master_test`.
+
+To build only one target:
+```bash
+make train_input_layer -j$(nproc)   # training only
+make validation -j$(nproc)          # inference only
+```
+
+Or build a single target:
+```bash
+make train_input_layer -j$(nproc)
+make validation -j$(nproc)
+```
+
 ## Train on WikiText-2 (auto-download)
 
 ```bash
