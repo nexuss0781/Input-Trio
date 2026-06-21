@@ -39,6 +39,8 @@ struct CmdConfig {
     std::string ckpt_dir = "checkpoints";
     std::string data_dir = "Data";
     std::string push_to_hub = "";   // repo_id, e.g. "nexuss0781/Input-Trio"
+    std::string token = "";
+    std::string token_file = "HF_TOKEN";
 };
 
 static CmdConfig parse_args(int argc, char** argv) {
@@ -56,6 +58,8 @@ static CmdConfig parse_args(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--ckpt"))     cfg.ckpt_dir = argv[++i];
         else if (!std::strcmp(argv[i], "--resume"))   cfg.resume   = true;
         else if (!std::strcmp(argv[i], "--push_to_hub")) cfg.push_to_hub = argv[++i];
+        else if (!std::strcmp(argv[i], "--token"))      cfg.token      = argv[++i];
+        else if (!std::strcmp(argv[i], "--token_file")) cfg.token_file = argv[++i];
     }
     return cfg;
 }
@@ -287,6 +291,8 @@ int main(int argc, char** argv) {
         RepoConfig rcfg;
         rcfg.repo_id         = cmd.push_to_hub;
         rcfg.local_path      = cmd.ckpt_dir;
+        rcfg.token           = cmd.token;
+        rcfg.token_file      = cmd.token_file;
         rcfg.create_if_missing = true;
         char msg[128];
         std::snprintf(msg, sizeof(msg), "Input-Trio checkpoint (step %d)", trainer.step());

@@ -18,6 +18,8 @@ struct RepoConfig {
     std::string repo_id;        // e.g. "nexuss0781/Input-Trio"
     std::string local_path;     // directory to upload (e.g. "checkpoints")
     std::string message;        // commit message
+    std::string token;          // HF token string (takes priority)
+    std::string token_file;     // path to token file (default "HF_TOKEN")
     bool create_if_missing = true;
 };
 
@@ -31,6 +33,10 @@ static bool repo_push(const RepoConfig& cfg) {
                     + std::string(" --repo_id ") + cfg.repo_id
                     + std::string(" --local_path ") + cfg.local_path;
 
+    if (!cfg.token.empty())
+        cmd += " --token " + cfg.token;
+    if (!cfg.token_file.empty())
+        cmd += " --token_file " + cfg.token_file;
     if (cfg.create_if_missing)
         cmd += " --create";
     if (!cfg.message.empty())
