@@ -4,6 +4,7 @@
 //   Usage: ./build/train_input_layer [--steps N] [--V N] [--d N] ...
 // =============================================================================
 #include "training.cpp"
+#include "repo.cpp"
 
 #include <cstdio>
 #include <cstring>
@@ -37,6 +38,7 @@ struct CmdConfig {
     bool   resume       = false;
     std::string ckpt_dir = "checkpoints";
     std::string data_dir = "Data";
+    std::string push_to_hub = "";   // repo_id, e.g. "nexuss0781/Input-Trio"
 };
 
 static CmdConfig parse_args(int argc, char** argv) {
@@ -53,6 +55,7 @@ static CmdConfig parse_args(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--data_dir")) cfg.data_dir = argv[++i];
         else if (!std::strcmp(argv[i], "--ckpt"))     cfg.ckpt_dir = argv[++i];
         else if (!std::strcmp(argv[i], "--resume"))   cfg.resume   = true;
+        else if (!std::strcmp(argv[i], "--push_to_hub")) cfg.push_to_hub = argv[++i];
     }
     return cfg;
 }
@@ -277,6 +280,18 @@ int main(int argc, char** argv) {
         } else {
             std::printf("  [test-set] Could not load %s — skipped\n", test_path.c_str());
         }
+    }
+
+    // ---- Push to Hugging Face Hub ----
+    if (!cmd.push_to_hub.empty()) {
+        RepoConfig rcfg;
+        rcfg.repo_id         = cmd.push_to_hub;
+        rcfg.local_path      = cmd.ckpt_dir;
+        rcfg.create_if_missing = true;
+        char msg[128];
+        std::snprintf(msg, sizeof(msg), "Input-Trio checkpoint (step %d)", trainer.step());
+        rcfg.message = msg;
+        repo_push(rcfg);
     }
 
     std::printf("\n%s", SEP);
