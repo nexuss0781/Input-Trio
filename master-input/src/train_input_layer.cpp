@@ -238,12 +238,9 @@ int main(int argc, char** argv) {
                 total_s, total_s * 1000.0 / std::max(1, cmd.steps - train_start_step));
     std::printf("  Checkpoints: %s/\n", cmd.ckpt_dir.c_str());
 
-    // ---- Validation split perplexity ----
-    std::printf("\n--- Evaluation ---\n");
+    // ---- Pipeline sanity checks ----
+    std::printf("\n--- Sanity checks ---\n");
     bool all_checks_ok = true;
-
-    // 1. Pipeline sanity checks
-    std::printf("[sanity] Checking tokenize→embed→position-encode pipeline...\n");
     {
         std::string msg;
         bool ok = check_pipeline_sanity(trainer, "Hello World!", &msg);
@@ -256,34 +253,6 @@ int main(int argc, char** argv) {
             "The quick brown fox jumps over the lazy dog. 0123456789.", &msg);
         std::printf("  %s: %s\n", ok ? "PASS" : "FAIL", msg.c_str());
         all_checks_ok = all_checks_ok && ok;
-    }
-
-    // 2. Full validation-set perplexity (if real data available)
-    if (use_real_data) {
-        std::string val_path = cmd.data_dir + "/validation.txt";
-        TextDataset val_set;
-        if (val_set.load(val_path)) {
-            std::printf("[eval] Loading %s (%d lines, %d tokens)...\n",
-                        val_path.c_str(), (int)val_set.lines.size(), val_set.size());
-            auto pr = eval_perplexity(trainer, val_set.token_ids,
-                                      cmd.batch_size, cmd.seq_len);
-            std::printf("  [val-set] loss=%.4f  ppl=%.2f  (%d tokens evaluated)\n",
-                        pr.loss, pr.ppl, pr.n_tok);
-        } else {
-            std::printf("  [val-set] Could not load %s — skipped\n", val_path.c_str());
-        }
-
-        // 3. Test-set perplexity
-        std::string test_path = cmd.data_dir + "/test.txt";
-        TextDataset test_set;
-        if (test_set.load(test_path)) {
-            auto pr = eval_perplexity(trainer, test_set.token_ids,
-                                      cmd.batch_size, cmd.seq_len);
-            std::printf("  [test-set] loss=%.4f  ppl=%.2f  (%d tokens evaluated)\n",
-                        pr.loss, pr.ppl, pr.n_tok);
-        } else {
-            std::printf("  [test-set] Could not load %s — skipped\n", test_path.c_str());
-        }
     }
 
     // ---- Push to Hugging Face Hub ----
